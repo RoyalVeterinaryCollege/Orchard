@@ -5,5 +5,6 @@ namespace Orchard.Warmup.ViewModels {
     public class WarmupViewModel {
         public WarmupSettingsPart Settings { get; set; }
         public IEnumerable<ReportEntry> ReportEntries { get; set; }
+        public dynamic Pager { get; set; }
     }
 }

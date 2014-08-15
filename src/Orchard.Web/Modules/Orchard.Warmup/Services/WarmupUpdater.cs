@@ -4,6 +4,8 @@ using System.IO;
 using System.Net;
 using System.Web;
 using System.Xml;
+using System.Xml.Linq;
+using System.Linq;
 using Orchard.ContentManagement;
 using Orchard.Environment.Configuration;
 using Orchard.Environment.Warmup;
@@ -111,6 +113,19 @@ namespace Orchard.Warmup.Services {
                 }
 
                 var reportEntries = new List<ReportEntry>();
+                baseUrl = VirtualPathUtility.RemoveTrailingSlash(baseUrl);
+
+                if (part.UseSiteMap) {
+                    WarmupUrl(baseUrl, baseUrl + part.SiteMapUrl, reportEntries);
+                    var sitemapUrls = GetSitemapUrls(baseUrl + part.SiteMapUrl);
+                    // Loop the url's in the sitemap and warm them up.
+                    foreach (var url in sitemapUrls) {
+                        if (String.IsNullOrWhiteSpace(url)) {
+                            continue;
+                        }
+                        WarmupUrl(baseUrl, url, reportEntries);
+                    }
+                }
 
                 if (!String.IsNullOrEmpty(part.Urls)) {
                     // loop over every relative url to generate the contents
@@ -120,60 +135,7 @@ namespace Orchard.Warmup.Services {
                             if (String.IsNullOrWhiteSpace(relativeUrl)) {
                                 continue;
                             }
-
-                            string url = null;
-                            relativeUrl = relativeUrl.Trim();
-
-                            try {
-                                url = VirtualPathUtility.RemoveTrailingSlash(baseUrl) + relativeUrl;
-                                var filename = WarmupUtility.EncodeUrl(url.TrimEnd('/'));
-                                var path = _appDataFolder.Combine(BaseFolder, filename);
-
-                                var download = _webDownloader.Download(url);
-
-                                if (download != null) {
-                                    if (download.StatusCode == HttpStatusCode.OK) {
-                                        // success
-                                        _appDataFolder.CreateFile(path, download.Content);
-
-                                        reportEntries.Add(new ReportEntry {
-                                            RelativeUrl = relativeUrl,
-                                            Filename = filename,
-                                            StatusCode = (int) download.StatusCode,
-                                            CreatedUtc = _clock.UtcNow
-                                        });
-
-                                        // if the base url contains http://www, then also render the www-less one);
-
-                                        if (url.StartsWith("http://www.", StringComparison.OrdinalIgnoreCase)) {
-                                            url = "http://" + url.Substring("http://www.".Length);
-                                            filename = WarmupUtility.EncodeUrl(url.TrimEnd('/'));
-                                            path = _appDataFolder.Combine(BaseFolder, filename);
-                                            _appDataFolder.CreateFile(path, download.Content);
-                                        }
-                                    }
-                                    else {
-                                        reportEntries.Add(new ReportEntry {
-                                            RelativeUrl = relativeUrl,
-                                            Filename = filename,
-                                            StatusCode = (int) download.StatusCode,
-                                            CreatedUtc = _clock.UtcNow
-                                        });
-                                    }
-                                }
-                                else {
-                                    // download failed
-                                    reportEntries.Add(new ReportEntry {
-                                        RelativeUrl = relativeUrl,
-                                        Filename = filename,
-                                        StatusCode = 0,
-                                        CreatedUtc = _clock.UtcNow
-                                    });
-                                }
-                            }
-                            catch (Exception e) {
-                                Logger.Error(e, "Could not extract warmup page content for: ", url);
-                            }
+                            WarmupUrl(baseUrl, baseUrl + relativeUrl, reportEntries);
                         }
                     }
                 }
@@ -199,6 +161,67 @@ namespace Orchard.Warmup.Services {
             }
 
             EnsureGenerate();
+        }
+
+        private IEnumerable<string> GetSitemapUrls(string url) {
+            try {
+                var sitemap = XDocument.Load(url);
+                XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
+                return sitemap.Descendants(ns + "url").Select(u => u.Element(ns + "loc").Value).ToList();
+            } catch (Exception e) {
+                Logger.Error(e, "Could not load urls from sitemap url: ", url);
+                return new List<string>();
+            }
+        }
+
+        private void WarmupUrl(string baseUrl, string url, ICollection<ReportEntry> reportEntries) {
+            var relativeUrl = url.Trim().Replace(baseUrl, string.Empty);
+            try {
+                var filename = WarmupUtility.EncodeUrl(url.TrimEnd('/'));
+                var path = _appDataFolder.Combine(BaseFolder, filename);
+
+                var download = _webDownloader.Download(url);
+
+                if (download != null) {
+                    if (download.StatusCode == HttpStatusCode.OK) {
+                        // success
+                        _appDataFolder.CreateFile(path, download.Content);
+
+                        reportEntries.Add(new ReportEntry {
+                            RelativeUrl = relativeUrl,
+                            Filename = filename,
+                            StatusCode = (int)download.StatusCode,
+                            CreatedUtc = _clock.UtcNow
+                        });
+
+                        // if the base url contains http://www, then also render the www-less one);
+
+                        if (url.StartsWith("http://www.", StringComparison.OrdinalIgnoreCase)) {
+                            url = "http://" + url.Substring("http://www.".Length);
+                            filename = WarmupUtility.EncodeUrl(url.TrimEnd('/'));
+                            path = _appDataFolder.Combine(BaseFolder, filename);
+                            _appDataFolder.CreateFile(path, download.Content);
+                        }
+                    } else {
+                        reportEntries.Add(new ReportEntry {
+                            RelativeUrl = relativeUrl,
+                            Filename = filename,
+                            StatusCode = (int)download.StatusCode,
+                            CreatedUtc = _clock.UtcNow
+                        });
+                    }
+                } else {
+                    // download failed
+                    reportEntries.Add(new ReportEntry {
+                        RelativeUrl = relativeUrl,
+                        Filename = filename,
+                        StatusCode = 0,
+                        CreatedUtc = _clock.UtcNow
+                    });
+                }
+            } catch (Exception e) {
+                Logger.Error(e, "Could not extract warmup page content for: ", url);
+            }
         }
     }
 }

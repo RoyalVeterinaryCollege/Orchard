@@ -1,11 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Web.Mvc;
 using Orchard.ContentManagement;
+using Orchard.Events;
 using Orchard.Localization;
 using Orchard.Mvc;
 using Orchard.Security;
+using Orchard.Settings;
+using Orchard.UI.Navigation;
 using Orchard.Warmup.Models;
 using Orchard.UI.Notify;
 using Orchard.Warmup.Services;
@@ -13,17 +17,20 @@ using Orchard.Warmup.ViewModels;
 
 namespace Orchard.Warmup.Controllers {
     [ValidateInput(false)]
-    public  class AdminController : Controller, IUpdateModel {
-        private readonly IWarmupUpdater _warmupUpdater;
+    public class AdminController : Controller, IUpdateModel {
+        private readonly ISiteService _siteService;
         private readonly IWarmupReportManager _reportManager;
+        private readonly IWarmupScheduler _warmupScheduler;
 
         public AdminController(
-            IOrchardServices services, 
-            IWarmupUpdater warmupUpdater,
-            IWarmupReportManager reportManager) {
-            _warmupUpdater = warmupUpdater;
+            IOrchardServices services,
+            ISiteService siteService,
+            IWarmupReportManager reportManager,
+            IWarmupScheduler warmupScheduler) {
+            _siteService = siteService;
             _reportManager = reportManager;
             Services = services;
+            _warmupScheduler = warmupScheduler;
 
             T = NullLocalizer.Instance;
         }
@@ -38,11 +45,26 @@ namespace Orchard.Warmup.Controllers {
             var warmupPart = Services.WorkContext.CurrentSite.As<WarmupSettingsPart>();
 
             var viewModel = new WarmupViewModel {
-                Settings = warmupPart,
-                ReportEntries = _reportManager.Read()
+                Settings = warmupPart
             };
 
             return View(viewModel);
+        }
+
+        public ActionResult Status(PagerParameters pagerParameters) {
+            if (!Services.Authorizer.Authorize(StandardPermissions.SiteOwner, T("Not authorized to view warmup status")))
+                return new HttpUnauthorizedResult();
+
+            var pager = new Pager(_siteService.GetSiteSettings(), pagerParameters);
+            var pagerShape = Services.New.Pager(pager).TotalItemCount(_reportManager.GetReportCount());
+            var warmupPart = Services.WorkContext.CurrentSite.As<WarmupSettingsPart>();
+
+            var model = new WarmupViewModel {
+                Settings = warmupPart,
+                ReportEntries = _reportManager.Read(pager.GetStartIndex(), pager.PageSize),
+                Pager = pagerShape
+            };
+            return View(model);
         }
 
         [FormValueRequired("submit")]
@@ -78,8 +100,14 @@ namespace Orchard.Warmup.Controllers {
                 }
             }
 
+            if (viewModel.Settings.UseSiteMap) {
+                if (string.IsNullOrWhiteSpace(viewModel.Settings.SiteMapUrl)) {
+                    AddModelError("SiteMapUrl", T("Sitemap url is required."));
+                }
+            }
+
             if (ModelState.IsValid) {
-                _warmupUpdater.Generate();
+                _warmupScheduler.Schedule(true);
                 Services.Notifier.Information(T("Warmup updated successfully."));
             }
             else {
@@ -101,4 +129,5 @@ namespace Orchard.Warmup.Controllers {
             ModelState.AddModelError(key, errorMessage.ToString());
         }
     }
+
 }

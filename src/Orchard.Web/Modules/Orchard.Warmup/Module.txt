@@ -7,3 +7,4 @@ OrchardVersion: 1.9
 Description: Provides a mecanism to generate a static version of pages for being used during application warm up.
 FeatureDescription: Generates the static version of specific pages periodically.
 Category: Hosting
+Dependencies: Orchard.JobsQueue

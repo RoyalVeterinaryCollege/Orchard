@@ -22,5 +22,15 @@ namespace Orchard.Warmup.Models {
             get { return this.Retrieve(x => x.OnPublish); }
             set { this.Store(x => x.OnPublish, value); }
         }
+
+        public bool UseSiteMap {
+            get { return this.Retrieve(x => x.UseSiteMap); }
+            set { this.Store(x => x.UseSiteMap, value); }
+        }
+
+        public string SiteMapUrl {
+            get { return this.Retrieve(x => x.SiteMapUrl); }
+            set { this.Store(x => x.SiteMapUrl, value); }
+        }
     }
 }

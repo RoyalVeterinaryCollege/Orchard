@@ -1,41 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
-using Orchard.Environment.Configuration;
-using Orchard.Environment.Descriptor;
-using Orchard.Environment.State;
 using Orchard.Events;
 
 namespace Orchard.Warmup.Services {
     public interface IWarmupEventHandler : IEventHandler {
         void Generate(bool force);
     }
+    
+    public interface IJobsQueueService : IEventHandler {
+        void Enqueue(string message, object parameters, int priority);
+    }
 
     public class WarmupScheduler : IWarmupScheduler, IWarmupEventHandler {
-        private readonly IProcessingEngine _processingEngine;
-        private readonly ShellSettings _shellSettings;
-        private readonly IShellDescriptorManager _shellDescriptorManager;
+        private readonly IJobsQueueService _jobsQueueService;
         private readonly Lazy<IWarmupUpdater> _warmupUpdater;
 
         public WarmupScheduler(
-            IProcessingEngine processingEngine,
-            ShellSettings shellSettings,
-            IShellDescriptorManager shellDescriptorManager,
+            IJobsQueueService jobsQueueService,
             Lazy<IWarmupUpdater> warmupUpdater ) {
-            _processingEngine = processingEngine;
-            _shellSettings = shellSettings;
-            _shellDescriptorManager = shellDescriptorManager;
+            _jobsQueueService = jobsQueueService;
             _warmupUpdater = warmupUpdater;
         }
 
         public void Schedule(bool force) {
-            var shellDescriptor = _shellDescriptorManager.GetShellDescriptor();
-
-            _processingEngine.AddTask(
-                _shellSettings,
-                shellDescriptor,
-                "IWarmupEventHandler.Generate",
-                new Dictionary<string, object> { { "force", force } }
-                );
+            _jobsQueueService.Enqueue(
+                "IWarmupEventHandler.Generate", 
+                new Dictionary<string, object> { { "force", force } }, 
+                10);
         }
 
         public void Generate(bool force) {

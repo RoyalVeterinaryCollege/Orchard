@@ -1,0 +1,42 @@
+﻿@model Orchard.Warmup.ViewModels.WarmupViewModel
+
+@{ 
+    Style.Include("orchard-warmup-admin.css");
+    Layout.Title = T("Performance").ToString(); 
+}
+<h3>@T("Warmup Status")</h3>
+    @if (Model.ReportEntries.Any()) {
+        <table class="items" summary="@T("This is a table of the urls that have been warmed up")">
+            <colgroup>
+                <col id="Col1" />
+                <col id="Col2" />
+                <col id="Col3" />
+                <col id="Col4" />
+            </colgroup>
+            <thead>
+                <tr>
+                    <th scope="col">@T("Path")</th>
+                    <th scope="col">@T("Status")</th>
+                    <th scope="col">@T("Date generated")</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            @foreach (var reportEntry in Model.ReportEntries) {
+                <tr>
+                    <td class="status-@(reportEntry.StatusCode != 200 ? "error" : "ok")" >
+                        @Html.Link(Html.Encode(reportEntry.RelativeUrl), reportEntry.RelativeUrl, new {target = "_blank"})
+                    </td>
+                    <td>
+                        @reportEntry.StatusCode
+                    </td>
+                    <td>
+                        @Display.DateTimeRelative(DateTimeUtc: reportEntry.CreatedUtc).ToString()
+                    </td>
+                </tr>
+            }
+        </table>
+    
+        @Display(Model.Pager)
+    } else {
+        <p>@T("No pages have been warmed up.")</p>
+    }

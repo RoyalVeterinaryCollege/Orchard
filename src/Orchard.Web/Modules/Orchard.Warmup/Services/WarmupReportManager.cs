@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
 using Orchard.Environment.Configuration;
@@ -11,6 +12,18 @@ namespace Orchard.Warmup.Services {
         private readonly IAppDataFolder _appDataFolder;
         private const string WarmupReportFilename = "warmup.xml";
         private readonly string _warmupReportPath;
+        private XDocument _warmupReport;
+
+        private XDocument WarmupReport {
+            get {
+                if (_warmupReport == null && _appDataFolder.FileExists(_warmupReportPath)) {
+                    var warmupReportContent = _appDataFolder.ReadFile(_warmupReportPath);
+                    _warmupReport = XDocument.Parse(warmupReportContent);
+                }
+                return _warmupReport;
+            }
+            set { _warmupReport = value; }
+        }
 
         public WarmupReportManager(
             ShellSettings shellSettings,
@@ -20,15 +33,11 @@ namespace Orchard.Warmup.Services {
             _warmupReportPath = _appDataFolder.Combine("Sites", _appDataFolder.Combine(shellSettings.Name, WarmupReportFilename));
         }
 
-        public IEnumerable<ReportEntry> Read() {
-            if(!_appDataFolder.FileExists(_warmupReportPath)) {
+        public IEnumerable<ReportEntry> Read(int skip = 0, int count = int.MaxValue) {
+            if (WarmupReport == null) {
                 yield break;
             }
-
-            var warmupReportContent = _appDataFolder.ReadFile(_warmupReportPath);
-
-            var doc = XDocument.Parse(warmupReportContent);
-            foreach (var entryNode in doc.Root.Descendants("ReportEntry")) {
+            foreach (var entryNode in WarmupReport.Root.Descendants("ReportEntry").Skip(skip).Take(count)) {
                 yield return new ReportEntry {
                     CreatedUtc = XmlConvert.ToDateTime(entryNode.Attribute("CreatedUtc").Value, XmlDateTimeSerializationMode.Utc),
                     Filename = entryNode.Attribute("Filename").Value,
@@ -36,6 +45,10 @@ namespace Orchard.Warmup.Services {
                     StatusCode = Int32.Parse(entryNode.Attribute("StatusCode").Value)
                 };
             }            
+        }
+
+        public int GetReportCount() {
+            return WarmupReport == null ? 0 : WarmupReport.Root.Descendants("ReportEntry").Count();
         }
 
         public void Create(IEnumerable<ReportEntry> reportEntries) {
@@ -53,6 +66,7 @@ namespace Orchard.Warmup.Services {
             }
 
             _appDataFolder.CreateFile(_warmupReportPath, report.ToString());
+            WarmupReport = report;
         }
     }
 }
