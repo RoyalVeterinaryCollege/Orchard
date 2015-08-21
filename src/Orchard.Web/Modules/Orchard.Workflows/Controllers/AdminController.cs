@@ -235,7 +235,7 @@ namespace Orchard.Workflows.Controllers {
                 dynamic activity = new JObject();
                 activity.Name = x.Name;
                 activity.Id = x.Id;
-                activity.ClientId = x.ClientId();
+                activity.ClientId = x.GetClientId();
                 activity.Left = x.X;
                 activity.Top = x.Y;
                 activity.Start = x.Start;
@@ -303,15 +303,20 @@ namespace Orchard.Workflows.Controllers {
                 });
             }
 
-            if (clearWorkflows) 
+            if (clearWorkflows) {
                 workflowDefinitionRecord.WorkflowRecords.Clear();
+            }
             else {
                 foreach (var workflowRecord in workflowDefinitionRecord.WorkflowRecords) {
                     // Update any awaiting activity records with the new activity record.
                     foreach (var awaitingActivityRecord in workflowRecord.AwaitingActivities) {
-                        var activityRecord = awaitingActivityRecord.ActivityRecord;
-                        if (activitiesIndex.ContainsKey(activityRecord.ClientId())) awaitingActivityRecord.ActivityRecord = activitiesIndex[activityRecord.ClientId()];
-                        else workflowRecord.AwaitingActivities.Remove(awaitingActivityRecord);
+                        var clientId = awaitingActivityRecord.ActivityRecord.GetClientId();
+                        if (activitiesIndex.ContainsKey(clientId)) {
+                            awaitingActivityRecord.ActivityRecord = activitiesIndex[clientId];
+                        }
+                        else {
+                            workflowRecord.AwaitingActivities.Remove(awaitingActivityRecord);
+                        }
                     }
                     // Remove any workflows with no awaiting activities.
                     if (!workflowRecord.AwaitingActivities.Any()) {

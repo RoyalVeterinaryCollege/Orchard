@@ -100,9 +100,9 @@
                 if (state.isRunning) {
                     var dialog = $('<p>' + $("#confirm-delete-instances").val() + '</p>').dialog({
                         buttons: {
-                            "Yes": function() { $('form').trigger('submit', [true, true]); },
-                            "No": function() { $('form').trigger('submit', [true, false]); },
-                            "Cancel": function() {
+                            '@T("Yes")': function() { $('form').trigger('submit', [true, true]); },
+                            '@T("No")': function() { $('form').trigger('submit', [true, false]); },
+                            '@T("Cancel")': function() {
                                 dialog.dialog('close');
                             }
                         }
