@@ -62,7 +62,7 @@ namespace Orchard.Taxonomies.Drivers {
                 var settings = field.PartFieldDefinition.Settings.GetModel<TaxonomyFieldSettings>();
                 var appliedTerms = _taxonomyService.GetTermsForContentItem(part.ContentItem.Id, field.Name, VersionOptions.Latest).Distinct(new TermPartComparer()).ToDictionary(t => t.Id, t => t);
                 var taxonomy = _taxonomyService.GetTaxonomyByName(settings.Taxonomy);
-                var terms = taxonomy != null
+                var terms = taxonomy != null && !settings.Autocomplete
                     ? _taxonomyService.GetTerms(taxonomy.Id).Where(t => !string.IsNullOrWhiteSpace(t.Name)).Select(t => t.CreateTermEntry()).ToList()
                     : new List<TermEntry>(0);
 
@@ -72,9 +72,11 @@ namespace Orchard.Taxonomies.Drivers {
                     DisplayName = field.DisplayName,
                     Name = field.Name,
                     Terms = terms,
+                    SelectedTerms = appliedTerms.Select(t => t.Value),
                     Settings = settings,
-                    SingleTermId = terms.Where(t => t.IsChecked).Select(t => t.Id).FirstOrDefault(),
-                    TaxonomyId = taxonomy != null ? taxonomy.Id : 0
+                    SingleTermId = appliedTerms.Select(t => t.Key).FirstOrDefault(),
+                    TaxonomyId = taxonomy != null ? taxonomy.Id : 0,
+                    HasTerms = taxonomy != null && _taxonomyService.GetTermsCount(taxonomy.Id) > 0
                 };
 
                 var templateName = settings.Autocomplete ? "Fields/TaxonomyField.Autocomplete" : "Fields/TaxonomyField";
