@@ -303,6 +303,19 @@ namespace Orchard.Workflows.Controllers {
                 });
             }
 
+            foreach (var workflowRecord in workflowDefinitionRecord.WorkflowRecords) {
+                // Update any awaiting activity records with the new activity record.
+                foreach (var awaitingActivityRecord in workflowRecord.AwaitingActivities) {
+                    var activity = activitiesIndex[awaitingActivityRecord.ActivityRecord.Name + "_" + awaitingActivityRecord.ActivityRecord.Id];
+                    if (activity != null) awaitingActivityRecord.ActivityRecord = activity;
+                    else workflowRecord.AwaitingActivities.Remove(awaitingActivityRecord);
+                }
+                // Remove any workflows with no awaiting activities.
+                if (!workflowRecord.AwaitingActivities.Any()) {
+                    workflowDefinitionRecord.WorkflowRecords.Remove(workflowRecord);
+                }
+            }
+
             Services.Notifier.Information(T("Workflow saved successfully"));
 
             return RedirectToAction("Edit", new { id, localId });
