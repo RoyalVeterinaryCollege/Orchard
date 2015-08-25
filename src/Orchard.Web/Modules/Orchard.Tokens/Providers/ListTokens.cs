@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Web;
 using Orchard.ContentManagement;
-using Orchard.Environment;
-using Orchard.Environment.Extensions;
 using Orchard.Localization;
 using System.Linq;
 	 
@@ -22,42 +19,42 @@ namespace Orchard.Tokens.Providers {
 	 
 	    public void Describe(DescribeContext context) {
 	        context.For("List", T("Lists"), T("Handles lists of Content Items"))
-	            .Token("ForEach:*", T("ForEach:<Tokenised string to apply to each element>"), T("Will loop each element in the list and apply the tokenised string supplied."))
-	            .Token("SumInt:*", T("SumInt:<Tokenised string that return a integer value to sum>"), T("Will loop each element in the list and apply the tokenised string supplied and sum the results."))
-	            .Token("SumFloat:*", T("SumFloat:<Tokenised string that return a float value to sum>"), T("Will loop each element in the list and apply the tokenised string supplied and sum the results."))
-                .Token("SumDecimal:*", T("SumDecimal:<Tokenised string that return a decimal value to sum>"), T("Will loop each element in the list and apply the tokenised string supplied and sum the results."))
-                .Token("First:*", T("First:<Tokenised string to apply to the first element>"), T("Will apply the tokenised string supplied to the first element."))
-                .Token("Last:*", T("Last:<Tokenised string to apply to the last element>"), T("Will apply the tokenised string supplied to the last element."))
-                .Token("Count", T("Count"), T("Gets the list count."))
+                .Token("Join:*", T("Join:<Tokenized text>[,<separator>]"), T("Join each element in the list by applying the tokenized text and concatenating the output with the optional separator."))
+                .Token("SumInt:*", T("SumInt:<Tokenized text>"), T("Sum each element in the list by applying the tokenized text."))
+                .Token("SumFloat:*", T("SumFloat:<Tokenized text>"), T("Sum each element in the list by applying the tokenized text."))
+                .Token("SumDecimal:*", T("SumDecimal:<Tokenized text>"), T("Sum each element in the list by applying the tokenized text."))
+                .Token("First:*", T("First:<Tokenized text>"), T("Apply the tokenized text to the first element."))
+                .Token("Last:*", T("Last:<Tokenized text>"), T("Apply the tokenized text to the last element."))
+                .Token("Count", T("Count"), T("Get the list count."))
                 ;
 	    }
 	 
 	    public void Evaluate(EvaluateContext context) {
             context.For<IList<IContent>>("List", () => new List<IContent>())
-                    .Token( // {List.ForEach:<string>}
-	                token =>
-	                {
-	                    if (token.StartsWith("ForEach:", StringComparison.OrdinalIgnoreCase))
-	                    {
+                    .Token( // {List.ForEach:<string>[,<separator>]}
+	                token => {
+	                    if (token.StartsWith("Join:", StringComparison.OrdinalIgnoreCase)) {
 	                        // html decode to stop double encoding.
-	                        return HttpUtility.HtmlDecode(token.Substring("ForEach:".Length));
+	                        return HttpUtility.HtmlDecode(token.Substring("Join:".Length));
 	                    }
 	                    return null;
 	                },
-	                (token, collection) =>
-	                {
-	                    var builder = new StringBuilder();
-	                    foreach (var content in collection)
-	                    {
-	                        builder.Append(_tokenizer().Replace(token, new { content }, new ReplaceOptions { Encoding = ReplaceOptions.NoEncode }));
+	                (token, collection) => {
+	                    if (String.IsNullOrEmpty(token)) {
+	                        return String.Empty;
 	                    }
-	                    return builder.ToString();
+                        // Split the params to get the tokenized text and optional separator.
+                        var index = token.IndexOf(',');
+	                    var text = index == -1 ? token : token.Substring(0, index);
+	                    if (String.IsNullOrEmpty(text)) {
+	                        return String.Empty;
+	                    }
+	                    var separator = index == -1 ? String.Empty : token.Substring(index + 1);
+	                    return String.Join(separator, collection.Select(content => _tokenizer().Replace(text, new {content}, new ReplaceOptions {Encoding = ReplaceOptions.NoEncode})));
 	                })
                     .Token( // {List.SumInt:<string>}
-	                token =>
-	                {
-	                    if (token.StartsWith("SumInt:", StringComparison.OrdinalIgnoreCase))
-	                    {
+	                token => {
+	                    if (token.StartsWith("SumInt:", StringComparison.OrdinalIgnoreCase)) {
 	                        // html decode to stop double encoding.
 	                        return HttpUtility.HtmlDecode(token.Substring("SumInt:".Length));
 	                    }
@@ -65,10 +62,8 @@ namespace Orchard.Tokens.Providers {
 	                },
 	                (token, collection) => collection.Sum(i => long.Parse(_tokenizer().Replace(token, new { Content = i }, new ReplaceOptions { Encoding = ReplaceOptions.NoEncode }))))
                     .Token( // {List.SumFloat:<string>}
-	                token =>
-	                {
-	                    if (token.StartsWith("SumFloat:", StringComparison.OrdinalIgnoreCase))
-	                    {
+	                token => {
+	                    if (token.StartsWith("SumFloat:", StringComparison.OrdinalIgnoreCase)) {
 	                        // html decode to stop double encoding.
 	                        return HttpUtility.HtmlDecode(token.Substring("SumFloat:".Length));
 	                    }
@@ -76,10 +71,8 @@ namespace Orchard.Tokens.Providers {
 	                },
 	                (token, collection) => collection.Sum(i => double.Parse(_tokenizer().Replace(token, new { Content = i }, new ReplaceOptions { Encoding = ReplaceOptions.NoEncode }))))
 	                .Token( // {List.SumDecimal:<string>}
-	                token =>
-	                {
-	                    if (token.StartsWith("SumDecimal:", StringComparison.OrdinalIgnoreCase))
-	                    {
+	                token => {
+	                    if (token.StartsWith("SumDecimal:", StringComparison.OrdinalIgnoreCase)) {
 	                        // html decode to stop double encoding.
 	                        return HttpUtility.HtmlDecode(token.Substring("SumDecimal:".Length));
 	                    }
