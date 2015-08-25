@@ -98,6 +98,7 @@
   <ItemGroup>
     <Compile Include="Controllers\AdminController.cs" />
     <Compile Include="Providers\ContentTokens.cs" />
+    <Compile Include="Providers\ListTokens.cs" />
     <Compile Include="Providers\RssPartFeedItemBuilder.cs" />
     <Compile Include="Providers\RequestTokens.cs" />
     <Compile Include="Providers\DateTokens.cs" />
