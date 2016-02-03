@@ -212,15 +212,16 @@ namespace Upgrade.Controllers {
                 }
             }
 
-            var processedParts = new List<string>();
+            var processedFields = new List<string>();
             foreach (var match in matches) {
 
-                // process each part only once as they could be used by multiple content types
-                if (processedParts.Contains(match.Part.PartDefinition.Name)) {
+                // process each field only once as they could be used by multiple content types
+                var qualifiedName = String.Format("{0}.{1}", match.Part.PartDefinition.Name, match.Field.Name);
+                if (processedFields.Contains(qualifiedName)) {
                     continue;
                 }
 
-                processedParts.Add(match.Part.PartDefinition.Name);
+                processedFields.Add(qualifiedName);
 
                 string hint, required;
                 match.Field.Settings.TryGetValue("MediaPickerFieldSettings.Hint", out hint);
