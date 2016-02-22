@@ -13,6 +13,7 @@ using Orchard.Environment.Descriptor.Models;
 using Orchard.Localization;
 using Orchard.Logging;
 using Orchard.Utility.Extensions;
+using Orchard.Exceptions;
 
 namespace Orchard.Environment {
     // All the event handlers that DefaultOrchardHost implements have to be declared in OrchardStarter
@@ -140,8 +141,15 @@ namespace Orchard.Environment {
                         var context = CreateShellContext(settings);
                         ActivateShell(context);
                     }
-                    catch (Exception e) {
-                        Logger.Error(e, "A tenant could not be started: " + settings.Name);
+                    catch (Exception ex) {
+                        if (ex.IsFatal()) {
+                            throw;
+                        } 
+                        Logger.Error(ex, "A tenant could not be started: " + settings.Name);
+                    }
+                    while (_processingEngine.AreTasksPending()) {
+                        Logger.Debug("Processing pending task after activate Shell");
+                        _processingEngine.ExecuteNextTask();
                     }
                 });
             }
@@ -200,7 +208,7 @@ namespace Orchard.Environment {
             // This is a "fake" cache entry to allow the extension loader coordinator
             // notify us (by resetting _current to "null") when an extension has changed
             // on disk, and we need to reload new/updated extensions.
-            _cacheManager.Get("OrchardHost_Extensions",
+            _cacheManager.Get("OrchardHost_Extensions", true,
                               ctx => {
                                   _extensionMonitoringCoordinator.MonitorExtensions(ctx.Monitor);
                                   _hostLocalRestart.Monitor(ctx.Monitor);

@@ -11,6 +11,7 @@ using Orchard.Layouts.Framework.Elements;
 using Orchard.Layouts.Helpers;
 using Orchard.Layouts.Models;
 using Orchard.Layouts.Services;
+using Orchard.Layouts.Settings;
 using Orchard.Layouts.ViewModels;
 using Orchard.Logging;
 
@@ -89,6 +90,19 @@ namespace Orchard.Layouts.Drivers {
 
         protected override DriverResult Editor(LayoutPart part, IUpdateModel updater, dynamic shapeHelper) {
             return ContentShape("Parts_Layout_Edit", () => {
+                if (part.Id == 0) {
+                    var settings = part.TypePartDefinition.Settings.GetModel<LayoutTypePartSettings>();
+
+                    // If the default layout setting is left empty, use the one from the service
+                    if (String.IsNullOrWhiteSpace(settings.DefaultLayoutData)) {
+                        var defaultData = _serializer.Serialize(_layoutManager.CreateDefaultLayout());
+                        part.LayoutData = defaultData;
+                    }
+                    else {
+                        part.LayoutData = settings.DefaultLayoutData;
+                    }
+                }
+
                 var viewModel = new LayoutPartViewModel {
                     LayoutEditor = _layoutEditorFactory.Create(part)
                 };
@@ -134,6 +148,11 @@ namespace Orchard.Layouts.Drivers {
         }
 
         protected override void Importing(LayoutPart part, ImportContentContext context) {
+            // Don't do anything if the tag is not specified.
+            if (context.Data.Element(part.PartDefinition.Name) == null) {
+                return;
+            }
+
             context.ImportChildEl(part.PartDefinition.Name, "LayoutData", s => {
                 part.LayoutData = s;
                 _layoutManager.Importing(new ImportLayoutContext {

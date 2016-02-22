@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
@@ -120,6 +120,11 @@ namespace Orchard.ContentPermissions.Drivers {
 
         protected override DriverResult Editor(ContentPermissionsPart part, IUpdateModel updater, dynamic shapeHelper) {
 
+            // ensure the current user is allowed to define permissions
+            if (!_authorizer.Authorize(Permissions.GrantPermission)) {
+                return null;
+            }
+
             var allRoles = _roleService.GetRoles().Select(x => x.Name).OrderBy(x => x).ToList();
 
             var model = new ContentPermissionsPartViewModel();
@@ -163,6 +168,11 @@ namespace Orchard.ContentPermissions.Drivers {
         }
 
         protected override void Importing(ContentPermissionsPart part, ImportContentContext context) {
+            // Don't do anything if the tag is not specified.
+            if (context.Data.Element(part.PartDefinition.Name) == null) {
+                return;
+            }
+
             context.ImportAttribute(part.PartDefinition.Name, "Enabled", s => part.Enabled = XmlConvert.ToBoolean(s));
             context.ImportAttribute(part.PartDefinition.Name, "ViewContent", s => part.ViewContent = s);
             context.ImportAttribute(part.PartDefinition.Name, "EditContent", s => part.EditContent = s);

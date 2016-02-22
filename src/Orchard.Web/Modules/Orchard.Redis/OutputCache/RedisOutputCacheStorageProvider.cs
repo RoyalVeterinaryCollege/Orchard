@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 using Orchard.Environment.Configuration;
 using Orchard.Environment.Extensions;
 using Orchard.Logging;
@@ -10,12 +9,24 @@ using Orchard.OutputCache.Models;
 using Orchard.OutputCache.Services;
 using Orchard.Redis.Extensions;
 using StackExchange.Redis;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.IO;
+using System.IO.Compression;
 
 namespace Orchard.Redis.OutputCache {
 
     [OrchardFeature("Orchard.Redis.OutputCache")]
     [OrchardSuppressDependency("Orchard.OutputCache.Services.DefaultCacheStorageProvider")]
-    public class RedisOutputCacheStorageProvider : Component, IOutputCacheStorageProvider {
+    /// <summary>
+    /// This implementation stores a <see cref="CacheItem"/> instance to a Redis server.
+    /// The item is serialized using a <see cref="BinaryFormatter"/> and GZipped. We rely
+    /// on compression at this level of the implementation as other output cache providers
+    /// might not want to rely on it, or transform the data to binary. The content is compressed
+    /// as HTML pages can be consequent, like several hundreds of KB, and the network be clogged.
+    /// To prevent versioning issues with serialized data, the Redis keys contain the 
+    /// <see cref="CacheItem.Version"/> property. 
+    /// </summary>
+    public class RedisOutputCacheStorageProvider : IOutputCacheStorageProvider {
 
         private readonly ShellSettings _shellSettings;
         private readonly IRedisConnectionProvider _redisConnectionProvider;
@@ -23,28 +34,39 @@ namespace Orchard.Redis.OutputCache {
 
         public const string ConnectionStringKey = "Orchard.Redis.OutputCache";
         private readonly string _connectionString;
+        private readonly ConnectionMultiplexer _connectionMultiplexer;
 
         public RedisOutputCacheStorageProvider(ShellSettings shellSettings, IRedisConnectionProvider redisConnectionProvider) {
             _shellSettings = shellSettings;
             _redisConnectionProvider = redisConnectionProvider;
             _connectionString = _redisConnectionProvider.GetConnectionString(ConnectionStringKey);
+            _connectionMultiplexer = _redisConnectionProvider.GetConnection(_connectionString);
 
             Logger = NullLogger.Instance;
         }
 
+        public ILogger Logger { get; set; }
+
         public IDatabase Database {
             get {
-                return _redisConnectionProvider.GetConnection(_connectionString).GetDatabase();
+                return _connectionMultiplexer.GetDatabase();
             }
         }
 
         public void Set(string key, CacheItem cacheItem) {
+            if (cacheItem == null) {
+                throw new ArgumentNullException("cacheItem");
+            }
+
             if (cacheItem.ValidFor <= 0) {
                 return;
             }
 
-            var value = JsonConvert.SerializeObject(cacheItem);
-            Database.StringSet(GetLocalizedKey(key), value, TimeSpan.FromSeconds(cacheItem.ValidFor));
+            using (var decompressedStream = Serialize(cacheItem)) {
+                using (var compressedStream = Compress(decompressedStream)) {
+                    Database.StringSet(GetLocalizedKey(key), compressedStream.ToArray(), TimeSpan.FromSeconds(cacheItem.ValidFor));
+                }
+            }
         }
 
         public void Remove(string key) {
@@ -52,16 +74,25 @@ namespace Orchard.Redis.OutputCache {
         }
 
         public void RemoveAll() {
-            Database.KeyDeleteWithPrefix(GetLocalizedKey("*"));
+            Database.KeyDelete(GetPrefixedKeys().Select(key => (RedisKey)key).ToArray());
         }
 
         public CacheItem GetCacheItem(string key) {
-            string value = Database.StringGet(GetLocalizedKey(key));
-            if (String.IsNullOrEmpty(value)) {
+            var value = Database.StringGet(GetLocalizedKey(key));
+
+            if (value.IsNullOrEmpty) {
                 return null;
             }
 
-            return JsonConvert.DeserializeObject<CacheItem>(value);
+            using (var compressedStream = new MemoryStream(value)) {
+                if (compressedStream.Length == 0) {
+                    return null;
+                }
+
+                using (var decompressedStream = Decompress(compressedStream)) {
+                    return Deserialize(decompressedStream);
+                }
+            }
         }
 
         public IEnumerable<CacheItem> GetCacheItems(int skip, int count) {
@@ -75,7 +106,7 @@ namespace Orchard.Redis.OutputCache {
         }
 
         public int GetCacheItemsCount() {
-            return Database.KeyCount(GetLocalizedKey("*"));
+            return GetPrefixedKeys().Count();
         }
 
         /// <summary>
@@ -84,7 +115,7 @@ namespace Orchard.Redis.OutputCache {
         /// <param name="key">The key to localized.</param>
         /// <returns>A localized key based on the tenant name.</returns>
         private string GetLocalizedKey(string key) {
-            return _shellSettings.Name + ":OutputCache:" + key;
+            return _shellSettings.Name + ":OC:" + CacheItem.Version + ":" + key;
         }
 
         /// <summary>
@@ -92,21 +123,52 @@ namespace Orchard.Redis.OutputCache {
         /// </summary>
         /// <returns>The keys for the current tenant.</returns>
         private IEnumerable<string> GetAllKeys() {
+            var prefix = GetLocalizedKey("");
+            return GetPrefixedKeys().Select(x => x.Substring(prefix.Length));
+        }
+
+        private IEnumerable<string> GetPrefixedKeys() {
             // prevent the same request from computing the list twice (count + list)
             if (_keysCache == null) {
                 _keysCache = new HashSet<string>();
-                var prefix = GetLocalizedKey("");
-
-                var connection = _redisConnectionProvider.GetConnection(_connectionString);
-                foreach (var endPoint in connection.GetEndPoints()) {
-                    var server = connection.GetServer(endPoint);
-                    foreach (var key in server.Keys(pattern: GetLocalizedKey("*"))) {
-                        _keysCache.Add(key.ToString().Substring(prefix.Length));
-                    }
+                var keys = _connectionMultiplexer.GetKeys(GetLocalizedKey("*"));
+                foreach (var key in keys) {
+                    _keysCache.Add(key);
                 }
             }
-
             return _keysCache;
+        }
+
+        private static MemoryStream Serialize(CacheItem item) {
+            BinaryFormatter binaryFormatter = new BinaryFormatter();
+            var memoryStream = new MemoryStream();
+            binaryFormatter.Serialize(memoryStream, item);
+            memoryStream.Seek(0, SeekOrigin.Begin);
+            return memoryStream;
+        }
+
+        private static CacheItem Deserialize(Stream stream) {
+            BinaryFormatter binaryFormatter = new BinaryFormatter();
+            var result = (CacheItem)binaryFormatter.Deserialize(stream);
+            return result;
+        }
+
+        private static MemoryStream Compress(Stream stream) {
+            var compressedStream = new MemoryStream();
+            using (var compressionStream = new GZipStream(compressedStream, CompressionMode.Compress)) {
+                stream.CopyTo(compressionStream);
+                return compressedStream;
+            }
+        }
+
+        private static Stream Decompress(Stream stream) {
+            var decompressedStream = new MemoryStream();
+            using (GZipStream decompressionStream = new GZipStream(stream, CompressionMode.Decompress)) {
+                decompressionStream.CopyTo(decompressedStream);
+                decompressedStream.Seek(0, SeekOrigin.Begin);
+                return decompressedStream;
+            }
+
         }
     }
 }

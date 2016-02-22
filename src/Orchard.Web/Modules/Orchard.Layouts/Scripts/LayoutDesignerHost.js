@@ -1,10 +1,9 @@
 ﻿(function ($) {
-
-    var LayoutDesignerHost = function (element) {
+    var LayoutDesignerHost = function (element, layoutEditor) {
         var self = this;
         this.element = element;
         this.element.data("layout-designer-host", this);
-        this.editor = window.layoutEditor;
+        this.editor = layoutEditor;
         this.isFormSubmitting = false;
         this.settings = {
             antiForgeryToken: self.element.data("anti-forgery-token"),
@@ -121,9 +120,6 @@
     // Export types.
     window.Orchard = window.Orchard || {};
     window.Orchard.Layouts = window.Orchard.Layouts || {};
-    window.Orchard.Layouts.LayoutEditorHost = window.Orchard.Layouts.LayoutEditorHost || {};
+    window.Orchard.Layouts.LayoutDesignerHost = LayoutDesignerHost;
 
-    $(function () {
-        var host = new LayoutDesignerHost($(".layout-designer"));
-    });
 })(jQuery);

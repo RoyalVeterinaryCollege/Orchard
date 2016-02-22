@@ -38,7 +38,8 @@ namespace Orchard.Autoroute.Handlers {
 
             OnPublished<AutoroutePart>((ctx, part) => PublishAlias(part));
 
-            // Remove alias if removed or unpublished
+            // Remove alias if destroyed, removed or unpublished
+            OnDestroyed<AutoroutePart>((ctx, part) => RemoveAlias(part));
             OnRemoved<AutoroutePart>((ctx, part) => RemoveAlias(part));
             OnUnpublished<AutoroutePart>((ctx, part) => RemoveAlias(part));
 
@@ -66,6 +67,10 @@ namespace Orchard.Autoroute.Handlers {
                     if (current != null) {
                         current.CustomPattern = String.Empty; // force the regeneration
                         current.DisplayAlias = _autorouteService.Value.GenerateAlias(current);
+
+                        // we changed the alias of the previous homepage, so publish this change if the content item was published.
+                        if(current.IsPublished())
+                            _orchardServices.ContentManager.Publish(current.ContentItem);
                     }
                     _autorouteService.Value.PublishAlias(current);
                 }

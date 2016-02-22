@@ -133,14 +133,14 @@ namespace Orchard.DynamicForms.Drivers {
 
         private IEnumerable<SelectListItem> GetOptions(Query element, string displayType, int? queryId, IDictionary<string, object> tokenData) {
             var optionLabel = element.OptionLabel;
+            var runtimeValues = GetRuntimeValues(element);
 
             if (!String.IsNullOrWhiteSpace(optionLabel)) {
-                yield return new SelectListItem { Text = displayType != "Design" ? _tokenizer.Replace(optionLabel, tokenData) : optionLabel };
+                yield return new SelectListItem { Text = displayType != "Design" ? _tokenizer.Replace(optionLabel, tokenData) : optionLabel, Value = string.Empty };
             }
 
             if (queryId == null)
                 yield break;
-
 
             var contentItems = _projectionManager.GetContentItems(queryId.Value).ToArray();
             var valueExpression = !String.IsNullOrWhiteSpace(element.ValueExpression) ? element.ValueExpression : "{Content.Id}";
@@ -149,13 +149,19 @@ namespace Orchard.DynamicForms.Drivers {
             foreach (var contentItem in contentItems) {
                 var data = new {Content = contentItem};
                 var value = _tokenizer.Replace(valueExpression, data);
-                var text = _tokenizer.Replace(textExpression, data);
+                var text = _tokenizer.Replace(textExpression, data, new ReplaceOptions { Encoding = ReplaceOptions.NoEncode });
 
                 yield return new SelectListItem {
                     Text = text,
-                    Value = value
+                    Value = value,
+                    Selected = runtimeValues.Contains(value, StringComparer.OrdinalIgnoreCase)
                 };
             }
+        }
+
+        private IEnumerable<string> GetRuntimeValues(Query element) {
+            var runtimeValue = element.RuntimeValue;
+            return runtimeValue != null ? runtimeValue.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries) : Enumerable.Empty<string>();
         }
     }
 }

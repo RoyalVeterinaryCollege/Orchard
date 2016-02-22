@@ -32,7 +32,7 @@
 
 }
 <fieldset class="taxonomy-wrapper" data-name-prefix="@Html.FieldNameFor(m => m)" data-id-prefix="@Html.FieldIdFor(m => m)">
-    <legend @if(Model.Settings.Required) { <text>class="required"</text> }>@Model.DisplayName.CamelFriendly()</legend>
+    <label @if(Model.Settings.Required) { <text>class="required"</text> }>@Model.DisplayName</label>
     @if (Model.Settings.Autocomplete) {
         <div class="terms-editor" data-taxonomy-id="@Model.TaxonomyId" data-leaves-only="@Model.Settings.LeavesOnly" data-selected-terms="@selectedTerms" data-allow-new-terms="@Model.Settings.AllowCustomTerms.ToString().ToLower()" data-singlechoice="@Model.Settings.SingleChoice.ToString().ToLower()">
             <ul></ul>
